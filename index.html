@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Peta Pesantren Al-Munawwir</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8f9fa; }
+        .page-header { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 200px; 
+            color: white; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.8); 
+        }
+        #map { height: 75vh; width: 100%; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .sidebar-container { height: 75vh; overflow-y: auto; }
+        .legend-key { display: inline-block; border-radius: 50%; width: 10px; height: 10px; margin-right: 8px; box-shadow: 0 0 3px rgba(0,0,0,0.3); }
+        .map-controls { position: absolute; bottom: 20px; right: 20px; z-index: 1000; }
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .debug-info {
+            background: #f8f9fa;
+            border-left: 4px solid #dc3545;
+            padding: 10px;
+            margin-top: 10px;
+            font-size: 0.8rem;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        .status-success { color: #28a745; }
+        .status-error { color: #dc3545; }
+        .status-warning { color: #ffc107; }
+        .file-status { margin-bottom: 5px; padding: 3px 8px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="#"><i class="fas fa-mosque me-2"></i>Peta Pesantren Al-Munawwir</a>
+        </div>
+    </nav>
+    
+    <header class="page-header">
+        <h1 class="display-5 fw-bold text-white">Peta Lokasi Bangunan Pesantren</h1>
+    </header>
+    
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <div class="col-lg-3 mb-4">
+                <div class="card shadow-sm sidebar-container">
+                    <div class="card-body">
+                        <h5 class="card-title text-primary"><i class="fas fa-book-open me-2"></i>Status Data</h5>
+                        
+                        <div class="card p-3 border-start border-primary border-4 mb-3">
+                            <h6 class="text-dark fw-bold mb-2"><i class="fas fa-list me-1"></i> Legenda Bangunan:</h6>
+                            <ul class="list-unstyled small mb-0">
+                                <li class="mb-1"><span class="legend-key" style="background-color: #ff5733;"></span> Asrama Putra</li>
+                                <li class="mb-1"><span class="legend-key" style="background-color: #33aaff;"></span> Asrama Putri</li>
+                                <li class="mb-1"><span class="legend-key" style="background-color: #4CAF50;"></span> Bangunan Umum</li>
+                            </ul>
+                        </div>
+
+                        <div class="mb-3">
+                            <button id="load-assets" class="btn btn-primary btn-sm w-100 mb-2">
+                                <i class="fas fa-sync me-1"></i> Muat Ulang dari Assets
+                            </button>
+                            <div class="text-center small text-muted">
+                                File akan dimuat dari: <code>assets/geojson/</code>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <h6 class="fw-bold">Status File:</h6>
+                            <div id="file-status-container">
+                                <!-- Status file akan ditampilkan di sini -->
+                            </div>
+                        </div>
+
+                        <div class="debug-info">
+                            <strong>Log Status:</strong>
+                            <div id="debug-output" class="small mt-1">Menunggu inisialisasi...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-9 position-relative">
+                <div id="loading" class="loading-overlay">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Memuat peta dan data GeoJSON...</p>
+                        <div id="loading-details" class="small text-muted mt-2">Mengakses folder assets/geojson/</div>
+                    </div>
+                </div>
+                <div id="map"></div>
+                <div class="map-controls">
+                    <button id="reset-view" class="btn btn-warning shadow-sm fw-bold">
+                        <i class="fas fa-location-arrow me-1"></i> Reset View
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="bg-dark text-white mt-5 py-4">
+        <div class="container">
+            <div class="text-center">
+                <p>&copy; Fauzan Zaidan (117230065). All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // Debug function
+        function debugLog(message, type = 'info') {
+            console.log(`[${type.toUpperCase()}] ${message}`);
+            const debugOutput = document.getElementById('debug-output');
+            if (debugOutput) {
+                const timestamp = new Date().toLocaleTimeString();
+                const className = type === 'error' ? 'status-error' : 
+                                type === 'success' ? 'status-success' : 
+                                type === 'warning' ? 'status-warning' : '';
+                debugOutput.innerHTML += `<div class="${className}">${timestamp}: ${message}</div>`;
+                debugOutput.scrollTop = debugOutput.scrollHeight;
+            }
+        }
+
+        function updateLoadingDetails(message) {
+            const loadingDetails = document.getElementById('loading-details');
+            if (loadingDetails) {
+                loadingDetails.textContent = message;
+            }
+        }
+
+        function updateFileStatus(filename, status, message = '') {
+            const container = document.getElementById('file-status-container');
+            const statusClass = status === 'success' ? 'bg-success text-white' : 
+                              status === 'error' ? 'bg-danger text-white' : 
+                              'bg-warning text-dark';
+            
+            container.innerHTML += `
+                <div class="file-status ${statusClass} small">
+                    <i class="fas fa-${status === 'success' ? 'check' : 'times'} me-1"></i>
+                    ${filename}: ${message || status}
+                </div>
+            `;
+        }
+
+        function clearFileStatus() {
+            document.getElementById('file-status-container').innerHTML = '';
+        }
+
+        // Inisialisasi peta
+        const map = L.map('map').setView([-7.82565, 110.361049], 16);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Konfigurasi layer dan file - DENGAN BERBAGAI PATH ALTERNATIF
+        const layerConfigs = {
+            'asrama-putra': { 
+                color: '#ff5733', 
+                name: 'Asrama Putra',
+                // Coba berbagai path
+                paths: [
+                    'assets/geojson/ASRAMA_PUTRA.geojson',
+                    './assets/geojson/ASRAMA_PUTRA.geojson',
+                    'ASRAMA_PUTRA.geojson',
+                    'data/ASRAMA_PUTRA.geojson'
+                ]
+            },
+            'asrama-putri': { 
+                color: '#33aaff', 
+                name: 'Asrama Putri',
+                paths: [
+                    'assets/geojson/ASRAMA_PUTRI.geojson',
+                    './assets/geojson/ASRAMA_PUTRI.geojson',
+                    'ASRAMA_PUTRI.geojson',
+                    'data/ASRAMA_PUTRI.geojson'
+                ]
+            },
+            'bangunan-umum': { 
+                color: '#4CAF50', 
+                name: 'Bangunan Umum',
+                paths: [
+                    'assets/geojson/BANGUNAN_UMUM.geojson',
+                    './assets/geojson/BANGUNAN_UMUM.geojson',
+                    'BANGUNAN_UMUM.geojson',
+                    'data/BANGUNAN_UMUM.geojson'
+                ]
+            }
+        };
+
+        let layerGroups = {};
+
+        // Data sample sebagai fallback
+        const sampleData = {
+            'asrama-putra': {
+                type: "FeatureCollection",
+                features: [
+                    {
+                        type: "Feature",
+                        properties: { 
+                            nama: "Asrama Putra A (Sample)", 
+                            deskripsi: "Data sample - Asrama untuk santri putra",
+                            luas: "500 m²",
+                            kapasitas: "50 santri"
+                        },
+                        geometry: {
+                            type: "Polygon",
+                            coordinates: [[
+                                [110.3595, -7.8245],
+                                [110.3605, -7.8245],
+                                [110.3605, -7.8255],
+                                [110.3595, -7.8255],
+                                [110.3595, -7.8245]
+                            ]]
+                        }
+                    }
+                ]
+            },
+            'asrama-putri': {
+                type: "FeatureCollection",
+                features: [
+                    {
+                        type: "Feature",
+                        properties: { 
+                            nama: "Asrama Putri A (Sample)", 
+                            deskripsi: "Data sample - Asrama untuk santri putri",
+                            luas: "450 m²",
+                            kapasitas: "40 santri"
+                        },
+                        geometry: {
+                            type: "Polygon",
+                            coordinates: [[
+                                [110.3615, -7.8245],
+                                [110.3625, -7.8245],
+                                [110.3625, -7.8255],
+                                [110.3615, -7.8255],
+                                [110.3615, -7.8245]
+                            ]]
+                        }
+                    }
+                ]
+            },
+            'bangunan-umum': {
+                type: "FeatureCollection",
+                features: [
+                    {
+                        type: "Feature",
+                        properties: { 
+                            nama: "Masjid Al-Munawwir (Sample)", 
+                            deskripsi: "Data sample - Masjid utama pesantren",
+                            luas: "800 m²",
+                            kapasitas: "500 jamaah"
+                        },
+                        geometry: {
+                            type: "Polygon",
+                            coordinates: [[
+                                [110.3605, -7.8265],
+                                [110.3615, -7.8265],
+                                [110.3615, -7.8275],
+                                [110.3605, -7.8275],
+                                [110.3605, -7.8265]
+                            ]]
+                        }
+                    }
+                ]
+            }
+        };
+
+        // Fungsi untuk mencoba berbagai path
+        async function tryMultiplePaths(paths, layerName) {
+            for (const path of paths) {
+                try {
+                    debugLog(`Mencoba path: ${path}`);
+                    updateLoadingDetails(`Mencoba: ${path}`);
+                    
+                    const response = await fetch(path);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    
+                    // Validasi GeoJSON
+                    if (!data.type || data.type !== 'FeatureCollection') {
+                        throw new Error('Format GeoJSON tidak valid');
+                    }
+                    
+                    debugLog(`✓ BERHASIL load: ${path}`);
+                    return { success: true, data: data, path: path };
+                    
+                } catch (error) {
+                    debugLog(`✗ Gagal di ${path}: ${error.message}`, 'warning');
+                    // Lanjut ke path berikutnya
+                }
+            }
+            
+            return { success: false, data: null, path: null };
+        }
+
+        // Fungsi untuk menambahkan layer ke peta
+        function addLayerToMap(geojsonData, layerId, isSample = false) {
+            const config = layerConfigs[layerId];
+            
+            // Hapus layer jika sudah ada
+            if (layerGroups[layerId]) {
+                layerGroups[layerId].remove();
+            }
+            
+            // Buat layer group baru
+            layerGroups[layerId] = L.layerGroup().addTo(map);
+            
+            try {
+                const geoJsonLayer = L.geoJSON(geojsonData, {
+                    style: {
+                        fillColor: config.color,
+                        fillOpacity: isSample ? 0.5 : 0.7, // Lebih transparan jika sample
+                        color: '#343a40',
+                        weight: 2,
+                        opacity: 1
+                    },
+                    onEachFeature: function(feature, layer) {
+                        const props = feature.properties || {};
+                        const nama = props.nama || props.name || 'Bangunan';
+                        const deskripsi = props.deskripsi || props.description || 'Tidak ada deskripsi';
+                        const source = isSample ? ' (DATA SAMPLE)' : '';
+                        
+                        const popupContent = `
+                            <div class="p-2">
+                                <h6 class="text-primary mb-1">${nama}${source}</h6>
+                                <p class="small mb-1">${deskripsi}</p>
+                                <div class="small text-muted">${config.name}</div>
+                            </div>
+                        `;
+                        
+                        layer.bindPopup(popupContent);
+                        
+                        layer.on('mouseover', function() {
+                            this.setStyle({
+                                fillOpacity: isSample ? 0.7 : 0.9,
+                                weight: 3
+                            });
+                        });
+                        
+                        layer.on('mouseout', function() {
+                            this.setStyle({
+                                fillOpacity: isSample ? 0.5 : 0.7,
+                                weight: 2
+                            });
+                        });
+                    }
+                });
+                
+                geoJsonLayer.addTo(layerGroups[layerId]);
+                return true;
+                
+            } catch (error) {
+                debugLog(`✗ Error menambahkan layer ${config.name}: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        // Fungsi utama: Load semua data
+        async function loadAllDataFromAssets() {
+            debugLog('=== MEMUAT DATA DARI ASSETS ===');
+            updateLoadingDetails('Memulai load data...');
+            document.getElementById('loading').style.display = 'flex';
+            clearFileStatus();
+            
+            let successCount = 0;
+            const totalLayers = Object.keys(layerConfigs).length;
+            
+            // Load setiap file
+            for (const [layerId, config] of Object.entries(layerConfigs)) {
+                const result = await tryMultiplePaths(config.paths, config.name);
+                
+                if (result.success) {
+                    if (addLayerToMap(result.data, layerId, false)) {
+                        successCount++;
+                        updateFileStatus(config.name, 'success', `Berhasil: ${result.path}`);
+                        debugLog(`✓ ${config.name}: Berhasil load dari ${result.path}`, 'success');
+                    }
+                } else {
+                    // Gunakan data sample sebagai fallback
+                    debugLog(`⚠ ${config.name}: Menggunakan data sample`, 'warning');
+                    if (addLayerToMap(sampleData[layerId], layerId, true)) {
+                        updateFileStatus(config.name, 'warning', 'Menggunakan data sample');
+                    } else {
+                        updateFileStatus(config.name, 'error', 'Gagal memuat data');
+                    }
+                }
+            }
+            
+            // Selesaikan loading
+            finishLoading(successCount, totalLayers);
+        }
+
+        function finishLoading(successCount, totalLayers) {
+            setTimeout(() => {
+                // Fit bounds ke semua layer
+                try {
+                    const allLayers = Object.values(layerGroups).filter(layer => {
+                        return layer.getLayers().length > 0;
+                    });
+                    
+                    if (allLayers.length > 0) {
+                        const group = L.featureGroup(allLayers);
+                        map.fitBounds(group.getBounds(), { padding: [20, 20] });
+                        debugLog(`✓ Peta di-zoom ke area data`);
+                    }
+                } catch (error) {
+                    debugLog('⚠ Tidak bisa fit bounds', 'warning');
+                }
+                
+                document.getElementById('loading').style.display = 'none';
+                
+                // Tampilkan summary
+                if (successCount > 0) {
+                    debugLog(`✅ Berhasil memuat ${successCount} file dari assets`, 'success');
+                } else {
+                    debugLog(`ℹ️ Menggunakan data sample untuk semua layer`, 'warning');
+                }
+            }, 1000);
+        }
+
+        // Event Listeners
+        document.getElementById('load-assets').addEventListener('click', loadAllDataFromAssets);
+        
+        document.getElementById('reset-view').addEventListener('click', () => {
+            map.setView([-7.82565, 110.361049], 16);
+            debugLog('View direset ke lokasi default');
+        });
+
+        // Initialize
+        map.whenReady(() => {
+            debugLog('Peta siap, memuat data...');
+            loadAllDataFromAssets();
+        });
+
+        // Test CORS - buka console dan ketik: testFileAccess()
+        window.testFileAccess = async function() {
+            console.log('=== TEST FILE ACCESS ===');
+            const testPaths = [
+                'assets/geojson/ASRAMA_PUTRA.geojson',
+                './assets/geojson/ASRAMA_PUTRA.geojson',
+                'ASRAMA_PUTRA.geojson'
+            ];
+            
+            for (const path of testPaths) {
+                try {
+                    const response = await fetch(path);
+                    console.log(`${path}: ${response.status} ${response.statusText}`);
+                } catch (error) {
+                    console.log(`${path}: ERROR - ${error.message}`);
+                }
+            }
+        }
+
+    </script>
+</body>
+</html>
